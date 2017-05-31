@@ -44,8 +44,6 @@ Timer1Counter:
 	rcall convert_digits	; call a function
 .endmacro
 
-
-
 .cseg
 .org 0x0000
    jmp RESET
