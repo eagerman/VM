@@ -9,6 +9,7 @@
 
 ;========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ==========
 .equ	ITEM_STRUCT_SIZE = 18
+.equ	NO_PRESS = 1
 
 .dseg
 	item_struct:	.byte ITEM_STRUCT_SIZE
@@ -71,6 +72,7 @@
 .def rmask = r20            ; mask for current row during scan
 .def cmask = r21            ; mask for current column during scan
 .def temp1 = r22 
+.def temp2 = r23
 
 .equ PORTLDIR = 0xF0        ; PH7-4: output, PH3-0, input
 .equ INITCOLMASK = 0xEF     ; scan from the rightmost column,
@@ -179,7 +181,7 @@ start:
     ldi temp, 1<<TOIE0      ; = 128 microseconds
     sts TIMSK0, temp        ; T/C0 interrupt enable
 
-	ldi key, 0 ;'NUL'
+	ldi key, NO_PRESS ;'NUL'
 	rcall fill_struct
 	rcall initial_screen
     clear Timer1Counter       ; Initialize the temporary counter to 0
@@ -188,9 +190,9 @@ start:
 startLoop:
 	rcall check3
 	cpi temp, 1
-	breq selectScreen
+	breq selectScreen	
 	rcall checkKey
-	cpi key, 15
+	cpi key, NO_PRESS
 	brne selectScreen
 	rjmp startLoop
 	
@@ -210,11 +212,127 @@ selectScreen:
 	do_lcd_data 't'
 	do_lcd_data 'e'
 	do_lcd_data 'm'
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	clr temp
 
-;	do_lcd_data_reg  key
+selectLoop:
+	rcall checkKey
+	cpi key, NO_PRESS
+	breq selectLoop
+	cpi key, '*'
+	breq jmpAdminMode
+	rjmp checkStock
 
-	
+jmpAdminMode:
+	jmp adminMode
 ;========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== 
+
+;========== CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ========== 
+checkStock:
+	mov temp, key
+	subi temp, '1'
+	cpi temp, 9
+	brge endStock
+
+	ldi YH, high(item_struct)
+	ldi YL, low(item_struct)
+
+chooseLoop:
+	cpi temp, 0
+	breq chooseCon
+	adiw Y, 2
+	dec temp
+	rjmp chooseLoop
+
+chooseCon:
+	ld temp, Y
+	cpi temp, 0
+	breq emptyScreen
+	rjmp coinScreen
+
+endStock:
+	rjmp selectLoop
+	;pop YL
+	;pop YH
+	;pop temp
+	;ret
+	
+;========== CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ========== 
+
+;========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== 
+emptyScreen:
+	do_lcd_command 0b00000001 ; clear display
+	do_lcd_data 'O'
+	do_lcd_data 'u'
+	do_lcd_data 't'
+	do_lcd_data ' '
+	do_lcd_data 'o'
+	do_lcd_data 'f'
+	do_lcd_data ' '
+	do_lcd_data 's'
+	do_lcd_data 't'
+	do_lcd_data 'o'
+	do_lcd_data 'c'
+	do_lcd_data 'k'
+	do_lcd_command 0b11000000
+
+	clear Timer1Counter       ; Initialize the temporary counter to 0
+	clr temp
+
+emptyLoop:
+	rcall check3
+	cpi temp, 1
+	breq jmpSelectScreen
+	rjmp emptyLoop
+
+jmpSelectScreen:
+	jmp selectScreen
+	;TODO push buttons and led light
+
+;========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== 
+
+;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
+coinScreen:
+	do_lcd_command 0b00000001 ; clear display
+	do_lcd_data 'I'
+	do_lcd_data 'n'
+	do_lcd_data 's'
+	do_lcd_data 'e'
+	do_lcd_data 'r'
+	do_lcd_data 't'
+	do_lcd_data ' '
+	do_lcd_data 'c'
+	do_lcd_data 'o'
+	do_lcd_data 'i'
+	do_lcd_data 'n'
+	do_lcd_data 's'
+	do_lcd_command 0b11000000
+	
+	adiw Y, 1 ;from quantity to price
+	ld temp, Y
+	subi temp, -'0'
+	do_lcd_data_reg temp
+	clear Timer1Counter       ; Initialize the temporary counter to 0
+	clr temp
+
+coinLoop:
+	rcall check3
+	cpi temp, 1
+	breq jmpselectScreen
+	rjmp coinLoop
+	
+	;TODO push buttons and led light
+
+;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
+
+;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
+adminMode:
+	rjmp selectLoop
+;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 
 end:
 	rjmp end
@@ -276,7 +394,7 @@ fill:
 	st Y+, r16
 	ldi r16, 2
 	st Y+, r16
-	ldi r16, 9
+	ldi r16, 0; change back to 9 ;==============;==============;==============;==============;==============;==============
 	st Y+, r16
 	ldi r16, 1
 	st Y, r16
@@ -335,13 +453,14 @@ checking:
 	cpi r24, low(23436)      ; 1953 is what we need Check if (r25:r24) = 7812 ; 7812 = 10^6/128
     ldi temp, high(23436)    ; 7812 interrupts = 1 second, 3906 interrupts = 0.5 seconds
     cpc r25, temp
-	breq is3
+	brge is3
 	ldi temp, 0
 	pop r25
 	pop r24
 	ret
 
 is3:
+	clear Timer1Counter
 	ldi temp, 1
 	pop r25
 	pop r24
@@ -350,71 +469,127 @@ is3:
 
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 checkKey:
-		push r16;
+		push r16; debouncer
 		push r17;
 		push r19;
 		push r20;
 		push r21;
 		push r22;
+		push r23; 
+
 keyStart:
         ldi cmask, INITCOLMASK
-
         clr col
+		clr r16
+
 colloop:
         cpi col, 4
-        breq convert_end
+        breq noPress
         sts PORTL, cmask
-        ldi temp1, 0xFF
 
-delay:
-        dec temp1
-        brne delay
+debounce:				; if same button is pressed for 5 loops with 1ms delays
+		;inc temp
+		rcall sleep_5ms
+		rcall sleep_5ms
+		rcall sleep_5ms
         lds temp1, PINL	; Read Port L
+		rcall sleep_5ms
+		rcall sleep_5ms
+		rcall sleep_5ms
+		lds temp2, PINL	; Read from same port
+		cp temp2, temp1
+		brne nopress	; if not same then no press
+		;cpi temp, 5
+		;brne debounce
+        ;@khaled debouncing works well for row 1
         andi temp1, ROWMASK
         cpi temp1, 0xF
         breq nextcol
-        
-        ldi rmask, INITROWMASK
+		
+		ldi rmask, INITROWMASK
         clr row
 
 rowloop:
         cpi row, 4
         breq nextcol
-        mov temp, temp1
-        and temp, rmask
+        mov temp2, temp1
+        and temp2, rmask
         breq convert
         inc row
         lsl rmask
-        jmp rowloop
-nextcol:        
+        rjmp rowloop
+
+nextcol:
         lsl cmask
         inc col
-        jmp colloop
- 
+        rjmp colloop
+
 convert:
         cpi row, 3
 		breq row3
+		cpi col, 4
+		breq col4
         mov temp1, row
         lsl temp1
         add temp1, row
         add temp1, col
-        subi temp1, -1
-        jmp convert_end      
-        
+        subi temp1, - '1'
+        rjmp convert_end
+
+nopress:
+		ldi temp1, NO_PRESS
+		rjmp convert_end
 row3:
+		cpi col, 0
+		breq star
 		cpi col, 1
 		breq zero
+		cpi col, 2
+		breq hash
+		rjmp nopress
+
+col4:
+		cpi row, 0
+		breq letA
+		cpi row, 1
+		breq letA
+		cpi row, 2
+		breq letA
+		rjmp nopress
+		
+hash:
+		ldi temp1, '#'
+		rjmp convert_end
+
+star:
+		ldi temp1, '*'
+		rjmp convert_end
+
 zero:
         ldi temp1, '0'
-        
+		rjmp convert_end
+
+letA:
+		ldi temp1, 'A'
+		rjmp convert_end
+
+letB:
+		ldi temp1, 'B'
+		rjmp convert_end
+
+letC:
+        ldi temp1, 'C'
+		rjmp convert_end
+
 convert_end:
         mov key, temp1
-pop r22;
-pop r21;
-pop r20;
-pop r19;
-pop r17;
-pop r16;
+		pop r23;
+		pop r22;
+		pop r21;
+		pop r20;
+		pop r19;
+		pop r17;
+		pop r16;
         ret
 
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
