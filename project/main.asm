@@ -55,6 +55,13 @@
         rcall lcd_wait
 .endmacro
 
+.macro do_lcd_rdata
+	mov lcd, @0
+	subi lcd, -'0'
+	rcall lcd_data
+	rcall lcd_wait
+.endmacro
+
 .macro lcd_set
         sbi PORTA, @0
 .endmacro
@@ -279,6 +286,7 @@ emptyScreen:
 	do_lcd_data 'c'
 	do_lcd_data 'k'
 	do_lcd_command 0b11000000
+	do_lcd_data_reg key
 
 	clear Timer1Counter       ; Initialize the temporary counter to 0
 	clr temp
@@ -314,15 +322,20 @@ coinScreen:
 	
 	adiw Y, 1 ;from quantity to price
 	ld temp, Y
-	subi temp, -'0'
-	do_lcd_data_reg temp
+	/*subi temp, -'0'	;done in do_lcd_rdata macro
+	do_lcd_data_reg temp*/ 
+	do_lcd_rdata temp
+
 	clear Timer1Counter       ; Initialize the temporary counter to 0
 	clr temp
 
 coinLoop:
-	rcall check3
-	cpi temp, 1
+	rcall checkKey
+	cpi key, '#'
 	breq jmpselectScreen
+
+;	cpi temp, 1				;@WILLIAM WHAT IS THIS FOR?
+;	breq jmpselectScreen
 	rjmp coinLoop
 	
 	;TODO push buttons and led light
