@@ -13,9 +13,15 @@
 
 .dseg
 	item_struct:	.byte ITEM_STRUCT_SIZE
+PotCounter:				;100ms
+	.byte 2
 
 .def temp = r16
 .def key = r25 ;holds the latest key pressed
+.def enablePot = r13
+.def coinCount = r2
+.def potValueL = r4
+.def potValueH = r5
 
 ; The macro clears a word (2 bytes) in a memory
 ; the parameter @0 is the memory address for that word
@@ -57,7 +63,7 @@
 
 .macro do_lcd_rdata
 	mov lcd, @0
-	subi lcd, -'0'
+	subi lcd, -'0' ;adding 48 to convert to digits 0-9
 	rcall lcd_data
 	rcall lcd_wait
 .endmacro
@@ -118,10 +124,20 @@ Timer1Counter:
    jmp DEFAULT          ; No handling for IRQ1.
 .org OVF0addr
    jmp Timer0OVF        ; Jump to the interrupt handler for
+.org OVF4addr
+	jmp TIMER4OVF
 jmp DEFAULT          ; default service for all other interrupts.
 DEFAULT:  reti          ; no service
 
 ;========== INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ========== 
+
+;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
+	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
+	sts ADMUX, temp
+	ldi temp, (1<<MUX5)	;
+	sts ADCSRB, temp
+	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
+	sts ADCSRA, temp
 
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 RESET:
@@ -155,6 +171,11 @@ RESET:
 	; Keypad setup
 	ldi temp1, PORTLDIR
     sts DDRL, temp1	; enable input on lower 4 bits of port L
+	
+	clr enablePot
+	clr potValueL
+	clr potValueH
+	clr coinCount
 
 	ldi temp, 1
 	rjmp start
@@ -291,6 +312,8 @@ emptyScreen:
 	clear Timer1Counter       ; Initialize the temporary counter to 0
 	clr temp
 
+rcall flashLEDS
+
 emptyLoop:
 	rcall check3
 	cpi temp, 1
@@ -325,7 +348,9 @@ coinScreen:
 	/*subi temp, -'0'	;done in do_lcd_rdata macro
 	do_lcd_data_reg temp*/ 
 	do_lcd_rdata temp
-
+	
+	inc enablePot	; ser enables potentiometer
+	
 	clear Timer1Counter       ; Initialize the temporary counter to 0
 	clr temp
 
@@ -334,8 +359,8 @@ coinLoop:
 	cpi key, '#'
 	breq jmpselectScreen
 
-;	cpi temp, 1				;@WILLIAM WHAT IS THIS FOR?
-;	breq jmpselectScreen
+	cpi temp, 1				;@WILLIAM WHAT IS THIS FOR?
+	breq jmpselectScreen
 	rjmp coinLoop
 	
 	;TODO push buttons and led light
@@ -478,7 +503,103 @@ is3:
 	pop r25
 	pop r24
 	ret
+
 ;========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ==========
+
+;===========Potentiometer reading timer ==================================================
+; TIMER 4 - POTENTIOMETER UPDATE EVERY 100MS
+; SIMILAR TO TIMER1/2
+; ENABLEPOT = 0 -> DISABLE TIMER4
+; ENABLEPOT = 1 -> STAGE 1: GO TO 0x0000 (POTSTAGEMIN)
+; ENABLEPOT = 2 -> STAGE 2: GO TO 0x03FF (POTSTAGEMAX)
+; ENABLEPOT = 3 -> STAGE 3: GO TO 0x0000 (POTSTAGEMIN)
+; ENABLEPOT = 4 -> STAGE 4: COIN INSERTION COMPLETE, GO BACK TO STAGE 1 (POTSTAGEFINAL)
+TIMER4OVF:
+	; 1
+	push temp1
+	push temp2
+	in temp1, SREG
+	push temp1
+	push YH
+	push YL
+	push r25
+	push r24
+checkPot:
+	clr temp1
+	cp enablePot, temp1
+	breq timer4Epilogue
+startTimer4:
+	; 2
+	lds r24, PotCounter
+	lds r25, PotCounter+1
+	adiw r25:r24, 1
+	; 3
+	cpi r24, low(3)
+	ldi temp1, high(3)
+	cpc r25, temp1
+	brne notTenthSecond
+; WHEN 100MS PASS
+; 1. RETRIVE POTENTIOMETER VALUE
+; 2. CHECK STAGE, AND BRANCH ACCORDINGLY
+tenthSeconds:
+	clear PotCounter
+	lds potValueL, ADCL
+	lds potValueH, ADCH	
+	ldi temp1, 1
+	cp enablePot, temp1
+	breq potStageMin
+	inc temp1
+	cp enablePot, temp1
+	breq potStageMax
+	inc temp1
+	cp enablePot, temp1
+	breq potStageMin
+	inc temp1
+	cp enablePot, temp1
+	breq potStageFinal
+; WHEN POTENTIOMETER = 0X0000 (FULLY ANTICLOCKWISE), INCREMENT
+potStageMin:
+	ldi temp1, low(0x0000)
+	ldi temp2, high(0x0000)
+	cp potValueL, temp1
+	cpc potValueH, temp2
+	breq incPot
+	jmp timer4Epilogue
+; WHEN POTENTIOMETER = 0X03FF (FULLY CLOCKWISE), INCREMENT
+potStageMax:
+	ldi temp1, low(0x03FF)
+	ldi temp2, high(0x03FF)
+	cp potValueL, temp1
+	cpc potValueH, temp2
+	breq incPot
+	jmp timer4Epilogue
+; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
+potStageFinal:
+	inc coinCount
+
+;	dec inventoryCost
+	ldi temp1, 1
+	mov enablePot, temp1
+	jmp timer4Epilogue
+; NEXT STAGE
+incPot:
+	inc enablePot
+	jmp timer4Epilogue
+notTenthSecond:
+	sts PotCounter, r24
+	sts PotCounter+1, r25
+	rjmp timer4Epilogue
+; 4
+timer4Epilogue:
+	pop r24
+	pop r25
+	pop YL
+	pop YH
+	pop temp1
+	out SREG, temp1
+	pop temp2
+	pop temp1
+	reti
 
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 checkKey:
@@ -607,6 +728,38 @@ convert_end:
 
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 
+; ============== LED FUNCTIONS================================================
+turnOnLEDS:
+	ser temp
+	out DDRC, temp
+	out PORTC, temp
+	ret
+
+turnOffLEDS:
+	clr temp
+	out PORTC, temp
+	ret
+
+flashLEDS:
+	rcall turnOnLEDS
+	rcall sleep_500ms
+	rcall turnOffLEDS
+	rcall sleep_500ms
+
+	rcall turnOnLEDS
+	rcall sleep_500ms
+	rcall turnOffLEDS
+	rcall sleep_500ms
+
+	rcall turnOnLEDS
+	rcall sleep_500ms
+	rcall turnOffLEDS
+	rcall sleep_500ms
+	ret
+
+jmpTurnOffLEDS:
+	rjmp turnOffLEDS
+
 ;========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== 
 
 ;;
@@ -676,4 +829,24 @@ sleep_5ms:
         rcall sleep_1ms
         rcall sleep_1ms
         ret
+sleep_25ms:
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	rcall sleep_5ms
+	ret
+sleep_100ms:
+	rcall sleep_25ms
+	rcall sleep_25ms
+	rcall sleep_25ms
+	rcall sleep_25ms
+	ret
+sleep_500ms:
+	rcall sleep_100ms
+	rcall sleep_100ms
+	rcall sleep_100ms
+	rcall sleep_100ms
+	rcall sleep_100ms
+	ret
 ;========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== 
