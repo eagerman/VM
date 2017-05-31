@@ -1,5 +1,5 @@
 
-AVRASM ver. 2.2.6  C:\Users\Khaled\Documents\Atmel Studio\7.0\project\working\project\khaled.asm Wed May 31 14:14:35 2017
+AVRASM ver. 2.2.6  C:\Users\william weng\Documents\Computing folder\my_code\comp2121_final\VM\project\main.asm Wed May 31 22:54:34 2017
 
 
 EQU  SIGNATURE_000 0000001e
@@ -1359,18 +1359,57 @@ EQU  URXC3addr    0000006c
 EQU  UDRE3addr    0000006e
 EQU  UTXC3addr    00000070
 EQU  INT_VECTORS_SIZE 00000072
-CSEG RESET        00000002
-CSEG lcd_command  00000084
-CSEG lcd_wait     00000094
-CSEG sleep_5ms    000000ae
-CSEG sleep_1ms    000000a5
-CSEG lcd_data     0000008b
-CSEG halt         00000083
+EQU  ITEM_STRUCT_SIZE 00000012
+DSEG item_struct  00000200
+DEF  temp         r16
+DEF  key          r25
+DEF  lcd          r18
 EQU  LCD_RS       00000007
 EQU  LCD_E        00000006
 EQU  LCD_RW       00000005
 EQU  LCD_BE       00000004
-CSEG lcd_wait_loop 00000099
+DEF  row          r17
+DEF  col          r19
+DEF  rmask        r20
+DEF  cmask        r21
+DEF  temp1        r22
+EQU  PORTLDIR     000000f0
+EQU  INITCOLMASK  000000ef
+EQU  INITROWMASK  00000001
+EQU  ROWMASK      0000000f
+DSEG Timer1Counter 00000212
+CSEG RESET        00000033
+CSEG DEFAULT      00000032
+CSEG Timer0OVF    0000005d
+CSEG lcd_command  00000182
+CSEG lcd_wait     00000192
+CSEG sleep_5ms    000001ac
+CSEG sleep_1ms    000001a3
+CSEG start        0000006b
+CSEG counting     0000005f
+CSEG endTimer     00000068
+CSEG fill_struct  000000ab
+CSEG initial_screen 000000d8
+CSEG startLoop    0000007b
+CSEG check3       00000139
+CSEG selectScreen 00000082
+CSEG checkKey     0000014b
+CSEG lcd_data     00000189
+CSEG end          000000aa
+CSEG fill         000000b0
+CSEG end_fill     000000d4
+CSEG checking     0000013b
+CSEG is3          00000147
+CSEG keyStart     00000151
+CSEG colloop      00000153
+CSEG convert_end  0000017a
+CSEG delay        00000158
+CSEG nextcol      0000016a
+CSEG rowloop      00000161
+CSEG convert      0000016e
+CSEG row3         00000177
+CSEG zero         00000179
+CSEG lcd_wait_loop 00000197
 EQU  F_CPU        00f42400
 EQU  DELAY_1MS    00000f9c
-CSEG delayloop_1ms 000000a9
+CSEG delayloop_1ms 000001a7

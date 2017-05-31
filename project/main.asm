@@ -210,8 +210,8 @@ selectScreen:
 	do_lcd_data 't'
 	do_lcd_data 'e'
 	do_lcd_data 'm'
-
-;	do_lcd_data_reg  key
+	subi key, -34
+	do_lcd_data_reg  key
 
 	
 ;========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== 
@@ -356,10 +356,11 @@ checkKey:
 		push r20;
 		push r21;
 		push r22;
+
 keyStart:
         ldi cmask, INITCOLMASK
-
         clr col
+
 colloop:
         cpi col, 4
         breq convert_end
@@ -373,7 +374,6 @@ delay:
         andi temp1, ROWMASK
         cpi temp1, 0xF
         breq nextcol
-        
         ldi rmask, INITROWMASK
         clr row
 
@@ -409,12 +409,12 @@ zero:
         
 convert_end:
         mov key, temp1
-pop r22;
-pop r21;
-pop r20;
-pop r19;
-pop r17;
-pop r16;
+		pop r22;
+		pop r21;
+		pop r20;
+		pop r19;
+		pop r17;
+		pop r16;
         ret
 
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
