@@ -1,90 +1,176 @@
-; This program implements a timer that counts one second using 
-; Timer0 interrupt
+;
+; vendingMachine.asm
+;
+; Created: 31/05/17 2:11:24 PM
+; Author : williamweng
+;
+
 .include "m2560def.inc"
 
-.def temp = r16
-.def counter = r17
-.def lcd = r18
-; The macro clears a word (2 bytes) in a memory
-; the parameter @0 is the memory address for that word
-.macro clear
-    ldi YL, low(@0)     ; load the memory address to Y
-    ldi YH, high(@0)
-    clr temp 
-    st Y+, temp         ; clear the two bytes at @0 in SRAM
-    st Y, temp
+;========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== 
+.equ LCD_RS = 7
+.equ LCD_E = 6
+.equ LCD_RW = 5
+.equ LCD_BE = 4
+
+.macro do_lcd_command	;send a command to the LCD
+        ldi r16, @0
+        rcall lcd_command
+        rcall lcd_wait
 .endmacro
-                        
+
+.macro do_lcd_data		; send Data to display
+        ldi r16, @0
+        rcall lcd_data
+        rcall lcd_wait
+.endmacro
+
+.macro lcd_set
+        sbi PORTA, @0
+.endmacro
+
+.macro lcd_clr
+        cbi PORTA, @0
+.endmacro
+
+;========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== 
+
+;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== 
+.macro isOdd
+	.if @1 & 1
+		st @0, 1
+	.else
+		st @0, 2
+	.endif
+.endmacro
+
+.macro fillElement
+	
+.endmacro
+;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== 
+
+;========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ==========
+.equ	ITEM_STRUCT_SIZE = 18
+
 .dseg
-Timer1Counter:
-   .byte 2              ; Temporary counter. Used to determine 
-                        ; if one second has passed
+	item_struct:	.byte ITEM_STRUCT_SIZE
 
-; LCD macros
-.macro do_lcd_command
-	ldi lcd, @0
-	rcall lcd_command
-	rcall lcd_wait
-.endmacro
-.macro do_lcd_data
-	ldi lcd, @0
-	rcall lcd_data
-	rcall lcd_wait
-.endmacro
-.macro do_lcd_rdata
-	mov lcd, @0
-	subi lcd, -'0'
-	rcall lcd_data
-	rcall lcd_wait
-.endmacro
-.macro do_lcd_digits
-	clr digit
-	clr digitCount
-	mov temp, @0			; temp is given number
-	rcall convert_digits	; call a function
-.endmacro
-
-
+;========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ==========
 
 .cseg
 .org 0x0000
-   jmp RESET
-   jmp DEFAULT          ; No handling for IRQ0.
-   jmp DEFAULT          ; No handling for IRQ1.
-.org OVF0addr
-   jmp Timer0OVF        ; Jump to the interrupt handler for
-jmp DEFAULT          ; default service for all other interrupts.
-DEFAULT:  reti          ; no service
+	jmp RESET
 
-RESET: 
-    ldi temp, high(RAMEND) ; Initialize stack pointer
-    out SPH, temp
-    ldi temp, low(RAMEND)
-    out SPL, temp
-    ser temp
-	sei
+;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
+RESET:
+	;stack pointer initialisation
+	ldi YL, low(RAMEND)
+	ldi YH, high(RAMEND)
+	out SPH, YH
+	out SPl, YL
 
-	; LCD setup
-	ser temp
-	out DDRF, temp ; data input address
-	out DDRA, temp ; inst inpit address
-	clr temp
-	out PORTF, temp; data port set
-	out PORTA, temp; inst port set
-
-	; LCD: init the settings
+	;LCD screen port initialisation
+    ser r16
+    out DDRF, r16
+    out DDRA, r16
+    clr r16
+    out PORTF, r16
+    out PORTA, r16
 	do_lcd_command 0b00111000 ; 2x5x7
 	rcall sleep_5ms
-	do_lcd_command 0b00111000 ; 2x5x7
-	rcall sleep_1ms
-	do_lcd_command 0b00111000 ; 2x5x7
-	do_lcd_command 0b00111000 ; 2x5x7
-	do_lcd_command 0b00001000 ; display off?
-	do_lcd_command 0b00000001 ; clear display
-	do_lcd_command 0b00000110 ; increment, no display shift
-	do_lcd_command 0b00001100 ; Cursor on, bar, no blink
+    do_lcd_command 0b00111000 ; 2x5x7
+    rcall sleep_1ms
+    do_lcd_command 0b00111000 ; 2x5x7
+    do_lcd_command 0b00111000 ; 2x5x7
+    do_lcd_command 0b00001000 ; display off?
+    do_lcd_command 0b00000001 ; clear display
+    do_lcd_command 0b00000110 ; increment, no display shift
+    do_lcd_command 0b00001100 ; Cursor on, bar, no blink
+	
+;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 
-do_lcd_data '2'
+;========== START ========== START ========== START ========== START ========== START ==========
+start:
+	rcall fill_struct
+	rcall initial_screen
+	
+;========== START ========== START ========== START ========== START ========== START ==========
+end:
+	rjmp end
+
+	
+;========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ==========
+;fill struct function
+fill_struct: 
+	push YH
+	push YL
+	push r16
+	;push r17
+
+	ldi YH, high(item_struct)
+	ldi YL, low(item_struct)
+	;ldi r16, 1
+	;clr r17
+
+/*
+fill:
+	cpi r16, 10
+	breq end_fill
+	st Y+, r16
+	isOdd r17, r16
+	st Y+, r17
+	inc r16
+	rjmp fill
+*/
+
+fill:
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 2
+	st Y+, r16
+	ldi r16, 3
+	st Y+, r16
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 4
+	st Y+, r16
+	ldi r16, 2
+	st Y+, r16
+	ldi r16, 5
+	st Y+, r16
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 6
+	st Y+, r16
+	ldi r16, 2
+	st Y+, r16
+	ldi r16, 7
+	st Y+, r16
+	ldi r16, 1
+	st Y+, r16
+	ldi r16, 8
+	st Y+, r16
+	ldi r16, 2
+	st Y+, r16
+	ldi r16, 9
+	st Y+, r16
+	ldi r16, 1
+	st Y, r16
+
+end_fill:
+;	pop r17
+	pop r16
+	pop YL
+	pop YH
+	ret
+	
+;Inital screen function
+initial_screen:
+	do_lcd_data '2'
 	do_lcd_data '1'
 	do_lcd_data '2'
 	do_lcd_data '1'
@@ -115,169 +201,75 @@ do_lcd_data '2'
 	do_lcd_data 'i'
 	do_lcd_data 'n'
 	do_lcd_data 'e'
+ret
 
+;========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ==========
 
-	rjmp main
-
-.equ LCD_RS = 7
-.equ LCD_E = 6
-.equ LCD_RW = 5
-.equ LCD_BE = 4
-
-.macro lcd_set
-	sbi PORTA, @0
-.endmacro
-.macro lcd_clr
-	cbi PORTA, @0
-.endmacro
-
-
-
-EXT_INT2:
-	in temp, SREG
-	push temp
-
-	inc counter
-
-	END_INT2:
-		pop temp
-		out SREG, temp
-		reti
-
-Timer0OVF: ; interrupt subroutine to Timer0
-    in temp, SREG
-    push temp       ; Prologue starts.
-    push YH         ; Save all conflict registers in the prologue.
-    push YL
-    push r25
-    push r24
-;	push counter
-	        ; Prologue ends.
-                    ; Load the value of the temporary counter.
-
-	newSecond:
-	    lds r24, Timer1Counter
-    	lds r25, Timer1Counter+1
-    	adiw r25:r24, 1 ; Increase the temporary counter by one.
-
-    	cpi r24, low(23436)      ; 1953 is what we need Check if (r25:r24) = 7812 ; 7812 = 10^6/128
-    	ldi temp, high(23436)    ; 7812 interrupts = 1 second, 3906 interrupts = 0.5 seconds
-    	cpc r25, temp
-    	brne NotSecond
-		
-		secondPassed: ; 1/2 of a second passed
-			do_lcd_command 0b00000001 ; clear display
-			do_lcd_command 0b00000110 ; increment, no display shift
-			do_lcd_command 0b00001100 ; Cursor on, bar, no blink
-
-			do_lcd_data 'S'
-			do_lcd_data 'e'
-			do_lcd_data 'l'
-			do_lcd_data 'e'
-			do_lcd_data 'c'
-			do_lcd_data 't'
-			do_lcd_data ' '
-			do_lcd_data 'i'
-			do_lcd_data 't'
-			do_lcd_data 'e'
-			do_lcd_data 'm'
-			
-			clr counter;
-			clear Timer1Counter
-    rjmp EndIF
-
-NotSecond: ; Store the new value of the temporary counter.
-    sts Timer1Counter, r24
-    sts Timer1Counter+1, r25 
-
-    
-EndIF:
-	;pop counter
-	pop r24         ; Epilogue starts;
-    pop r25         ; Restore all conflict registers from the stack.
-    pop YL
-    pop YH
-    pop temp
-    out SREG, temp
-    reti            ; Return from the interrupt.
-
-main:
-    clear Timer1Counter       ; Initialize the temporary counter to 0
-
-    ldi temp, 0b00000000
-    out TCCR0A, temp
-    ldi temp, 0b00000010
-    out TCCR0B, temp        ; Prescaling value = 8
-    ldi temp, 1<<TOIE0      ; = 128 microseconds
-    sts TIMSK0, temp        ; T/C0 interrupt enable
-
-    sei                     ; Enable global interrupt
-                            ; loop forever
-    loop: rjmp loop
-
-; Send a command to the LCD (lcd register) ============================================
-;
+;========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== 
+        ;;
+        ;;  Send a command to the LCD (r16)
+        ;;
 
 lcd_command:
-	out PORTF, lcd
-	rcall sleep_1ms
-	lcd_set LCD_E
-	rcall sleep_1ms
-	lcd_clr LCD_E
-	rcall sleep_1ms
-	ret
+        out PORTF, r16
+        rcall sleep_1ms
+        lcd_set LCD_E	; turn on the enable pin
+        rcall sleep_1ms
+        lcd_clr LCD_E
+        rcall sleep_1ms
+        ret
 
 lcd_data:
-	out PORTF, lcd
-	lcd_set LCD_RS
-	rcall sleep_1ms
-	lcd_set LCD_E
-	rcall sleep_1ms
-	lcd_clr LCD_E
-	rcall sleep_1ms
-	lcd_clr LCD_RS
-	ret
+        out PORTF, r16
+        lcd_set LCD_RS
+        rcall sleep_1ms
+        lcd_set LCD_E
+        rcall sleep_1ms
+        lcd_clr LCD_E
+        rcall sleep_1ms
+        lcd_clr LCD_RS
+        ret
 
 lcd_wait:
-	push lcd
-	clr lcd
-	out DDRF, lcd
-	out PORTF, lcd
-	lcd_set LCD_RW
+        push r16
+        clr r16
+        out DDRF, r16
+        out PORTF, r16
+        lcd_set LCD_RW
 lcd_wait_loop:
-	rcall sleep_1ms
-	lcd_set LCD_E
-	rcall sleep_1ms
-	in lcd, PINF
-	lcd_clr LCD_E
-	sbrc lcd, 7
-	rjmp lcd_wait_loop
-	lcd_clr LCD_RW
-	ser lcd
-	out DDRF, lcd
-	pop lcd
-	ret
+        rcall sleep_1ms
+        lcd_set LCD_E
+        rcall sleep_1ms
+        in r16, PINF
+        lcd_clr LCD_E
+        sbrc r16, 7
+        rjmp lcd_wait_loop
+        lcd_clr LCD_RW
+        ser r16
+        out DDRF, r16
+        pop r16
+        ret
 
 .equ F_CPU = 16000000
 .equ DELAY_1MS = F_CPU / 4 / 1000 - 4
-; 4 cycles per iteration - setup/call-return overhead
 
 sleep_1ms:
-	push r24
-	push r25
-	ldi r25, high(DELAY_1MS)
-	ldi r24, low(DELAY_1MS)
+        push r24
+        push r25
+        ldi r25, high(DELAY_1MS)
+        ldi r24, low(DELAY_1MS)
 delayloop_1ms:
-	sbiw r25:r24, 1
-	brne delayloop_1ms
-	pop r25
-	pop r24
-	ret
+        sbiw r25:r24, 1
+        brne delayloop_1ms
+        pop r25
+        pop r24
+        ret
 
 sleep_5ms:
-	rcall sleep_1ms
-	rcall sleep_1ms
-	rcall sleep_1ms
-	rcall sleep_1ms
-	rcall sleep_1ms
-	ret
+        rcall sleep_1ms
+        rcall sleep_1ms
+        rcall sleep_1ms
+        rcall sleep_1ms
+        rcall sleep_1ms
+        ret
+;========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== LCD HELPER FUNCTION ========== 
