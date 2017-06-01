@@ -33,6 +33,7 @@
         cbi PORTA, @0
 .endmacro
 
+<<<<<<< HEAD
 ;========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== 
 
 ;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== 
@@ -48,6 +49,17 @@
 	
 .endmacro
 ;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== 
+=======
+.cseg
+.org 0x0000
+   jmp RESET
+   jmp DEFAULT          ; No handling for IRQ0.
+   jmp DEFAULT          ; No handling for IRQ1.
+.org OVF0addr
+   jmp Timer0OVF        ; Jump to the interrupt handler for
+jmp DEFAULT          ; default service for all other interrupts.
+DEFAULT:  reti          ; no service
+>>>>>>> 128461258a77d47e61f1c1a7def49559787c72bf
 
 ;========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ========== GLOBAL VARIABLE ==========
 .equ	ITEM_STRUCT_SIZE = 18
