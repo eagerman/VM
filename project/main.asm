@@ -240,6 +240,9 @@ RESET:
 	ori temp, (1<<INT1)
 	out EIMSK, temp
 
+	; Speaker 
+	ser temp
+	out DDRB, temp
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
 
 ; To repeat the routine, set 1<<ADSC
@@ -268,6 +271,7 @@ counting:
 	mov temp2, motor
 	cpi temp2, 1
 	breq motorCode
+
 motorCodeBack:
 	sts Timer1Counter, r24
     sts Timer1Counter+1, r25
@@ -278,6 +282,10 @@ endTimer:
 	pop r25
 	pop r24
 	reti
+
+/*beep_code:
+	rcall beep
+	rjmp beep_back*/
 
 motorCode:
 	mov temp1, coinCount
@@ -309,8 +317,6 @@ turnOff:
 motorEnd:
 	clr motor
 	rjmp motorCodeBack
-;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
-
 
 ;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
 EXT_INT0:
@@ -1108,6 +1114,11 @@ letC:
 		rjmp convert_end
 
 convert_end:
+		cpi temp1, '*'
+		breq backtoConvert
+		cpi temp1, NO_PRESS
+		brne jmptobeep
+		backtoConvert:
         mov key, temp1
 		pop r23;
 		pop r22;
@@ -1117,7 +1128,41 @@ convert_end:
 		pop r17;
 		pop r16;
         ret
-;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
+
+jmptobeep:
+	rcall beep
+	rjmp backtoConvert
+	
+		; MAKE SPEAKER BEEP FOR 250MS
+beep:
+	push temp
+	in temp, SREG
+	push temp
+	push temp1
+
+	clr temp
+	
+	soundLoop:
+		;125*2ms sleeps = 250ms beep
+		cpi temp, 125		
+		breq endSoundLoop
+
+		sbi PORTB, 0	;set bit 0
+		rcall sleep_1ms
+
+		cbi PORTB, 0	; clear bit 0
+		rcall sleep_1ms	;square wave
+
+		inc temp
+
+	rjmp soundLoop
+
+	endSoundLoop:
+		pop temp1
+		pop temp
+		out SREG, temp
+		pop temp
+		ret
 
 ; ============== LED FUNCTIONS================================================
 turnOnLEDS:
