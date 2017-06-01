@@ -536,7 +536,11 @@ deliveryScreen:
 	do_lcd_data 't'
 	do_lcd_data 'e'
 	do_lcd_data 'm'
+	ser temp
+	out PORTE, temp
 	rcall flashLEDS
+	clr temp
+	out PORTE, temp
 
 	ld temp, -Y
 	cpi temp, 0
