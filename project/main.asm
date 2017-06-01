@@ -23,6 +23,8 @@
 .def potValueL = r4
 .def potValueH = r5
 .def motor = r3
+.def pushR = r6
+.def pushL = r7
 
 .equ COIN_START = 0
 .equ COIN_LOW = 1
@@ -156,8 +158,10 @@ Timer1Counter:
 .cseg
 .org 0x0000
    jmp RESET
-   jmp DEFAULT          ; No handling for IRQ0.
-   jmp DEFAULT          ; No handling for IRQ1.
+.org INT0addr
+	jmp EXT_INT0
+.org INT1addr
+	jmp EXT_INT1
 .org OVF0addr
    jmp Timer0OVF        ; Jump to the interrupt handler for
 .org 0x003A			;ADC ADDR
@@ -166,6 +170,7 @@ jmp DEFAULT          ; default service for all other interrupts.
 DEFAULT:  reti          ; no service
 
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
+
 RESET:
 	clr motor
 	;stack pointer initialisation
@@ -221,6 +226,19 @@ RESET:
     ldi temp, 1<<TOIE0      ; = 128 microseconds
     sts TIMSK0, temp        ; T/C0 interrupt enable
 	
+	
+	;PB0 set up
+	ldi temp, (2 << ISC00) ; set INT0 as fallingsts
+	sts EICRA, temp ; edge triggered interrupt
+	in temp, EIMSK ; enable INT0
+	ori temp, (1<<INT0)
+	out EIMSK, temp
+	;PB1 set up
+	ldi temp, (2 << ISC01) ; set INT0 as fallingsts
+	sts EICRA, temp ; edge triggered interrupt
+	in temp, EIMSK ; enable INT0
+	ori temp, (1<<INT1)
+	out EIMSK, temp
 
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
 
@@ -235,7 +253,6 @@ RESET:
 
 	ldi temp, 1
 	rjmp start
-;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 
 ;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
 Timer0OVF: ; interrupt subroutine to Timer0
@@ -294,6 +311,52 @@ motorEnd:
 	rjmp motorCodeBack
 ;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
 
+
+;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
+EXT_INT0:
+	push temp ; save register
+	in temp, SREG ; save SREG
+	push temp
+	push temp1
+	; debounce
+
+	; WRITE YOU CODE HERE ==================
+	mov temp1, pushL
+	cpi temp1, 0
+	brne END_INT0
+	inc pushL
+	; WRITE YOU CODE HERE ==================
+
+
+	END_INT0:
+	pop temp1
+	pop temp ; restore SREG
+	out SREG, temp
+	pop temp ; restore register
+	reti
+
+EXT_INT1:
+	push temp ; save register
+	in temp, SREG ; save SREG
+	push temp
+	push temp1
+	; debounce
+
+	; WRITE YOU CODE HERE ==================
+	mov temp1, pushR
+	cpi temp1, 0
+	brne END_INT1
+	inc pushR
+	; WRITE YOU CODE HERE ==================
+
+	END_INT1:
+	pop temp1
+	pop temp ; restore SREG
+	out SREG, temp
+	pop temp ; restore register
+	reti
+
+
 ;========== START ========== START ========== START ========== START ========== START ==========
 start:
 	ldi key, NO_PRESS ;'NUL'
@@ -350,6 +413,7 @@ adminCheckLoop:
 	brne selectLoop
 	clr temp
 	rcall check5
+	ldi temp, 1
 	cpi temp, 1
 	brne adminCheckLoop
 	
@@ -604,14 +668,26 @@ adminLoop:
 	breq adminLoop
 	cpi key, NO_PRESS
 	brne jmpItemChoose
+    mov temp2, pushR
+	cpi temp2, 1
+    breq jmpItemDown
+    mov temp2, pushL
+	cpi temp2, 1
+    breq jmpItemUp
 	rjmp adminLoop
+
 jmpItemChoose:
 	jmp itemChoose
 jmpPriceUp:
 	jmp priceUp
-
 jmpPriceDown:
 	jmp priceDown
+jmpItemUp:
+	clr pushL
+	jmp itemUp
+jmpItemDown:
+	clr pushR
+	jmp itemDown
 
 jmpBackScreen:
 	clr temp
@@ -629,27 +705,72 @@ clearItem:
     do_lcd_data '0'
     rjmp adminLoop
 	
+itemUp:
+    ld temp, -Y
+    inc temp
+	cpi temp, 10
+	brge itemUBack
+    ledLightUpBinary temp
+    do_lcd_command 0b11000000
+    do_lcd_rdata temp
+    st y, temp
+    adiw y, 1
+    ld temp, y
+	rcall sleep_100ms
+    rjmp adminLoop
+
+itemUBack:
+    ledLightUpBinary temp
+    do_lcd_command 0b11000000
+    do_lcd_data '1'
+    do_lcd_command 0b11000001
+    do_lcd_data '0'
+    adiw y, 1
+    ld temp, y
+	jmp adminLoop
+
+itemDown:
+    do_lcd_command 0b11000001
+    do_lcd_data ' '
+    ld temp, -Y
+	cpi temp, 1
+	brlo itemDBack
+	rcall sleep_100ms
+    dec temp
+    ledLightUpBinary temp
+    do_lcd_command 0b11000000
+    do_lcd_rdata temp
+    st y, temp
+    adiw y, 1
+    ld temp, y
+    rjmp adminLoop
+	
+itemDBack:
+    adiw y, 1
+    ld temp, y
+	jmp adminLoop
+
 jmpAdminLoop:
 	jmp adminLoop
 	
 priceUp:
 	cpi temp, 3
 	breq jmpAdminLoop
-	rcall sleep_100ms
 	inc temp
 	st Y, temp
 	do_lcd_command 0b11001111
 	do_lcd_rdata temp
+	rcall sleep_100ms
 	rjmp adminLoop
 	
 priceDown:
 	cpi temp, 1
 	breq jmpAdminLoop
-	rcall sleep_100ms
 	dec temp
 	st Y, temp
 	do_lcd_command 0b11001111
 	do_lcd_rdata temp
+	rcall sleep_100ms
 	rjmp adminLoop
 
 itemChoose:
