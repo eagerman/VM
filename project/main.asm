@@ -243,11 +243,9 @@ selectScreen:
 	do_lcd_data 't'
 	do_lcd_data 'e'
 	do_lcd_data 'm'
-	rcall sleep_5ms
-	rcall sleep_5ms
-	rcall sleep_5ms
-	rcall sleep_5ms
-	rcall sleep_5ms
+
+	rcall sleep_25ms
+
 	clr temp
 
 selectLoop:
@@ -265,6 +263,8 @@ jmpAdminMode:
 ;========== CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ==========  CHECKSTOCK FUNCTION ========== 
 checkStock:
 	mov temp, key
+	cpi temp, '#'
+	breq endStock
 	subi temp, '1'
 	cpi temp, 9
 	brge endStock
@@ -283,6 +283,9 @@ chooseCon:
 	ld temp, Y
 	cpi temp, 0
 	breq emptyScreen
+	inc enablePot
+	adiw Y, 1 ;from quantity to price
+	ld coinCount, Y
 	rjmp coinScreen
 
 endStock:
@@ -311,23 +314,17 @@ emptyScreen:
 	do_lcd_data 'k'
 	do_lcd_command 0b11000000
 	do_lcd_data_reg key
-
-	clear Timer1Counter       ; Initialize the temporary counter to 0
-	clr temp
-
-rcall flashLEDS
-
-emptyLoop:
-	rcall check3
-	cpi temp, 1
-	breq jmpSelectScreen
-	rjmp emptyLoop
-
-jmpSelectScreen:
+	rcall flashLEDS
 	jmp selectScreen
 	;TODO push buttons and led light
 
 ;========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== 
+
+;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
+cancelCoin:
+	clr enablePot
+	jmp selectScreen
+;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
 
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
 coinScreen:
@@ -345,33 +342,26 @@ coinScreen:
 	do_lcd_data 'n'
 	do_lcd_data 's'
 	do_lcd_command 0b11000000
-	
-	adiw Y, 1 ;from quantity to price
-	ld temp, Y
-	/*subi temp, -'0'	;done in do_lcd_rdata macro
-	do_lcd_data_reg temp*/ 
-	do_lcd_rdata temp
-	
-	inc enablePot	;enables potentiometer
-	
-	clear Timer1Counter       ; Initialize the temporary counter to 0
-	clr temp
+	do_lcd_rdata coinCount
 
 coinLoop:
 	rcall checkKey
 	cpi key, '#'
-	breq jmpselectScreen
-
-	cpi temp, 1				;@WILLIAM WHAT IS THIS FOR?
-	breq jmpselectScreen
+	jmp cancelCoin
+	mov temp, coinCount
+	cpi temp, 0
+	breq deliveryScreen
+	rcall sleep_5ms
 	rjmp coinLoop
-	
 	;TODO push buttons and led light
 
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
 
+jmpselectScreen:
+	jmp selectScreen
 ;========== Delivery MODE ===============================================================
 deliveryScreen:
+	clr enablePot
 	do_lcd_command 0b00000001 ; Clear display
 	do_lcd_data 'D'
 	do_lcd_data 'e'
@@ -388,7 +378,16 @@ deliveryScreen:
 	do_lcd_data 't'
 	do_lcd_data 'e'
 	do_lcd_data 'm'
-	ret
+	rcall flashLEDS
+
+	ld temp, -Y
+	cpi temp, 0
+	breq jmpselectScreen
+	dec temp
+	st Y, temp
+	jmp selectScreen
+;========== Delivery MODE ===============================================================
+
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 adminMode:
 		do_lcd_command 0b10000000
@@ -611,12 +610,7 @@ potStageMax:
 	jmp TIMER3Epilogue
 ; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
 potStageFinal:
-	inc coinCount
-	rcall deliveryScreen;
-	rcall flashLEDS;
-	rcall selectScreen;
-
-;	dec inventoryCost
+	dec coinCount
 	ldi temp1, 1
 	mov enablePot, temp1
 	jmp TIMER3Epilogue
@@ -680,21 +674,28 @@ colloop:
         breq noPress
         sts PORTL, cmask
 
-debounce:				; if same button is pressed for 5 loops with 1ms delays
-		;inc temp
-		rcall sleep_5ms
-		rcall sleep_5ms
-		rcall sleep_5ms
-        lds temp1, PINL	; Read Port L
-		rcall sleep_5ms
-		rcall sleep_5ms
-		rcall sleep_5ms
-		lds temp2, PINL	; Read from same port
-		cp temp2, temp1
-		brne nopress	; if not same then no press
-		;cpi temp, 5
-		;brne debounce
-        ;@khaled debouncing works well for row 1
+debounce:
+		/* start a counter at 10, if key is pressed, increment, if not pressed, decrement,
+		if counter is 20, key is pressed, else key is not pressed */
+
+		ldi temp, 10
+		testDebounce:						
+			rcall sleep_1ms
+			lds temp1, PINL
+			cpi temp1, NO_PRESS				; compare key if it's pressed
+			breq testDebounceNotPressed		; 
+			inc temp
+			cpi temp, 20
+			brne testDebounce
+			rjmp pressed
+		testDebounceNotPressed:
+			dec temp
+			cpi temp, 0
+			brne nopress
+			rjmp testDebounce
+
+pressed:
+
         andi temp1, ROWMASK
         cpi temp1, 0xF
         breq nextcol
@@ -720,8 +721,8 @@ nextcol:
 convert:
         cpi row, 3
 		breq row3
-		cpi col, 4
-		breq col4
+		cpi col, 3
+		breq col3
         mov temp1, row
         lsl temp1
         add temp1, row
@@ -741,7 +742,7 @@ row3:
 		breq hash
 		rjmp nopress
 
-col4:
+col3:
 		cpi row, 0
 		breq letA
 		cpi row, 1
