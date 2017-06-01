@@ -265,9 +265,11 @@ checkStock:
 	mov temp, key
 	cpi temp, '#'
 	breq endStock
-	subi temp, '1'
-	cpi temp, 9
+	cpi temp, '1'
+	brlo endStock
+	cpi temp, ':'
 	brge endStock
+	subi temp, '1'
 
 	ldi YH, high(item_struct)
 	ldi YL, low(item_struct)
@@ -347,7 +349,7 @@ coinScreen:
 coinLoop:
 	rcall checkKey
 	cpi key, '#'
-	jmp cancelCoin
+	breq cancelCoin
 	mov temp, coinCount
 	cpi temp, 0
 	breq deliveryScreen
@@ -402,7 +404,7 @@ adminMode:
 		do_lcd_data 'd'
 		do_lcd_data 'e'
 		do_lcd_data ' '
-
+		do_lcd_data '1'
 		do_lcd_command 0b11000000
 
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
@@ -439,7 +441,7 @@ fill:
 	st Y+, r16
 	ldi r16, 1
 	st Y+, r16
-	ldi r16, 1
+	ldi r16, 2
 	st Y+, r16
 	ldi r16, 2
 	st Y+, r16
@@ -467,7 +469,7 @@ fill:
 	st Y+, r16
 	ldi r16, 2
 	st Y+, r16
-	ldi r16, 0; change back to 9 ;==============;==============;==============;==============;==============;==============
+	ldi r16, 9; change back to 9 ;==============;==============;==============;==============;==============;==============
 	st Y+, r16
 	ldi r16, 1
 	st Y, r16
@@ -562,7 +564,7 @@ TIMER3OVF:
 checkPot:
 	clr temp1
 	cp enablePot, temp1
-	breq TIMER3Epilogue
+	breq jmpTIMER3Epilogue
 startTIMER3:
 	; 2
 	lds r24, PotCounter
@@ -608,9 +610,13 @@ potStageMax:
 	cpc potValueH, temp2
 	breq incPot
 	jmp TIMER3Epilogue
+jmpTIMER3Epilogue:
+	jmp TIMER3Epilogue
 ; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
 potStageFinal:
 	dec coinCount
+	do_lcd_command 0b00010000
+	do_lcd_rdata coinCount
 	ldi temp1, 1
 	mov enablePot, temp1
 	jmp TIMER3Epilogue
