@@ -101,6 +101,23 @@
 .macro ledLightUpBinary
 	mov temp1, @0
 	clr temp2
+	
+	cpi temp1, 10
+	brlo check8
+	ldi temp2, 3
+	out DDRG, temp2
+	out PORTG, temp2
+	dec temp1
+	rjmp binaryLoop
+
+	check8:
+	cpi temp1, 9
+	brlo binaryLoop
+	ldi temp2, 1
+	out DDRG, temp2
+	out PORTG, temp2
+	dec temp1
+
 	binaryLoop:
 		cpi temp1, 0
 		breq binaryCont
@@ -307,7 +324,7 @@ chooseCon:
 	breq emptyScreen
 	adiw Y, 1 ;from quantity to price
 	clr coinStage
-	clr coinStage
+	clr coinCount
 	rjmp coinScreen
 
 endStock:
@@ -364,7 +381,8 @@ coinScreen:
 	do_lcd_data 'n'
 	do_lcd_data 's'
 	do_lcd_command 0b11000000
-	do_lcd_rdata coinCount
+	ld temp1, Y
+	do_lcd_rdata temp1
 	clr coinStage
 
 coinLoop:
@@ -388,14 +406,15 @@ jmpdeliveryScreen:
 
 payCheck:
 	clr coinStage
-	inc coinCount
 	ld temp1, Y
+	inc coinCount
 	mov temp, coinCount
 	cp temp, temp1
 	breq jmpdeliveryScreen
-	sub temp1, temp
+	ledLightUpBinary temp
+	sub temp, temp1
 	do_lcd_command 0b11000000
-	do_lcd_rdata temp1
+	do_lcd_rdata temp
 	rjmp coinBack
 
 ;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
@@ -507,17 +526,24 @@ adminMode:
 adminLoop:
 	rcall checkKey
 	cpi key, 'A'
-	breq priceUp
+	breq jmpPriceUp
 	cpi key, 'B'
-	breq priceDown
+	breq jmpPriceDown
     cpi key, 'C'
     breq clearItem
 	cpi key, '#'
 	breq jmpBackScreen
 	cpi key, NO_PRESS
-	brne itemChoose
+	brne jmpItemChoose
 	rjmp adminLoop
-	
+jmpItemChoose:
+	jmp itemChoose
+jmpPriceUp:
+	jmp priceUp
+
+jmpPriceDown:
+	jmp priceDown
+
 jmpBackScreen:
 	clr temp
 	ledLightUpBinary temp
@@ -533,10 +559,13 @@ clearItem:
     do_lcd_command 0b11000000
     do_lcd_data '0'
     rjmp adminLoop
-
+	
+jmpAdminLoop:
+	jmp adminLoop
+	
 priceUp:
 	cpi temp, 3
-	breq adminLoop
+	breq jmpAdminLoop
 	rcall sleep_100ms
 	inc temp
 	st Y, temp
@@ -546,7 +575,7 @@ priceUp:
 	
 priceDown:
 	cpi temp, 1
-	breq adminLoop
+	breq jmpAdminLoop
 	rcall sleep_100ms
 	dec temp
 	st Y, temp
