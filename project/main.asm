@@ -134,7 +134,8 @@
 
 ;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ==========
 .macro isOdd
-	.if @1 & 1
+	ldi r16, @1
+	.if r16 & 1
 		st @0, 1
 	.else
 		st @0, 2
@@ -413,7 +414,6 @@ adminCheckLoop:
 	brne selectLoop
 	clr temp
 	rcall check5
-	ldi temp, 1
 	cpi temp, 1
 	brne adminCheckLoop
 	
@@ -818,12 +818,12 @@ fill_struct:
 	push YH
 	push YL
 	push r16
-	;push r17
+	push r17
 
 	ldi YH, high(item_struct)
 	ldi YL, low(item_struct)
-	;ldi r16, 1
-	;clr r17
+	ldi r16, 1
+	clr r17
 
 /*
 fill:
@@ -875,7 +875,7 @@ fill:
 	st Y, r16
 
 end_fill:
-;	pop r17
+	pop r17
 	pop r16
 	pop YL
 	pop YH
@@ -1136,20 +1136,21 @@ turnOffLEDS:
 	ret
 
 flashLEDS:
-	rcall turnOnLEDS
-	rcall sleep_500ms
-	rcall turnOffLEDS
-	rcall sleep_500ms
+	push temp2
+	ldi temp2, 3
 
+flashLoop:
+	cpi temp2, 0
+	brne stopFlash
 	rcall turnOnLEDS
 	rcall sleep_500ms
 	rcall turnOffLEDS
 	rcall sleep_500ms
+	dec temp2
+	rjmp flashLoop
 
-	rcall turnOnLEDS
-	rcall sleep_500ms
-	rcall turnOffLEDS
-	rcall sleep_500ms
+stopFlash:
+	pop temp2
 	ret
 
 jmpTurnOffLEDS:
