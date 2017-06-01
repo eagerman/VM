@@ -88,6 +88,25 @@ PotCounter:				;100ms
 .endmacro
 
 ;========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== 
+
+;========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== 
+.macro ledLightUpBinary
+	mov temp1, @0
+	clr temp2
+	binaryLoop:
+		cpi temp1, 0
+		breq binaryCont
+		lsl temp2
+		inc temp2
+		dec temp1
+		rjmp binaryLoop
+
+	binaryCont:
+	out DDRC, temp2
+	out PORTC, temp2
+.endmacro
+;========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== 
+
 ;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ==========
 .macro isOdd
 	.if @1 & 1
@@ -392,21 +411,100 @@ deliveryScreen:
 
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 adminMode:
-		do_lcd_command 0b10000000
-		do_lcd_data 'A'
-		do_lcd_data 'd'
-		do_lcd_data 'm'
-		do_lcd_data 'i'
-		do_lcd_data 'n'
-		do_lcd_data ' '
-		do_lcd_data 'M'
-		do_lcd_data 'o'
-		do_lcd_data 'd'
-		do_lcd_data 'e'
-		do_lcd_data ' '
-		do_lcd_data '1'
-		do_lcd_command 0b11000000
+	ldi YH, high(item_struct)
+	ldi YL, low(item_struct)
+	ld temp, Y+
+	do_lcd_command 0b10000000
+	do_lcd_data 'A'
+	do_lcd_data 'd'
+	do_lcd_data 'm'
+	do_lcd_data 'i'
+	do_lcd_data 'n'
+	do_lcd_data ' '
+	do_lcd_data 'M'
+	do_lcd_data 'o'
+	do_lcd_data 'd'
+	do_lcd_data 'e'
+	do_lcd_data ' '
+	do_lcd_data '1'
+	do_lcd_command 0b11000000
+	do_lcd_rdata temp
+	 
+	ledLightUpBinary temp
+	do_lcd_command 0b11001110
+	do_lcd_data '$'
+	ld temp, Y
+	do_lcd_rdata temp
 
+adminLoop:
+	rcall checkKey
+	cpi key, 'A'
+	breq priceUp
+	cpi key, 'B'
+	breq priceDown
+	cpi key, '#'
+	breq jmpBackScreen
+	cpi key, NO_PRESS
+	brne itemChoose
+	rjmp adminLoop
+	
+jmpBackScreen:
+	jmp selectScreen
+
+priceUp:
+	cpi temp, 3
+	breq adminLoop
+	rcall sleep_100ms
+	inc temp
+	st Y, temp
+	do_lcd_command 0b11001111
+	do_lcd_rdata temp
+	rjmp adminLoop
+	
+priceDown:
+	cpi temp, 1
+	breq adminLoop
+	rcall sleep_100ms
+	dec temp
+	st Y, temp
+	do_lcd_command 0b11001111
+	do_lcd_rdata temp
+	rjmp adminLoop
+
+itemChoose:
+	mov temp, key
+	cpi temp, '#'
+	breq endItem
+	cpi temp, '1'
+	brlo endItem
+	cpi temp, ':'
+	brge endItem
+
+	ldi YH, high(item_struct)
+	ldi YL, low(item_struct)
+
+itemLoop:
+	cpi temp, 0
+	breq itemCon
+	adiw Y, 2
+	dec temp
+	rjmp itemLoop
+
+itemCon:
+	do_lcd_command 0b10001011
+	do_lcd_data_reg key
+	ld temp, Y+
+	subi temp, -'0'
+	do_lcd_command 0b11000000
+	do_lcd_data_reg temp
+	ld temp, Y
+	subi temp, -'0'
+	do_lcd_command 0b11001111
+	do_lcd_data_reg temp
+	rjmp adminLoop
+
+endItem:
+	jmp adminLoop
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 
 end:
@@ -752,9 +850,9 @@ col3:
 		cpi row, 0
 		breq letA
 		cpi row, 1
-		breq letA
+		breq letB
 		cpi row, 2
-		breq letA
+		breq letC
 		rjmp nopress
 		
 hash:
