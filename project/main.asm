@@ -307,7 +307,7 @@ chooseCon:
 	breq emptyScreen
 	adiw Y, 1 ;from quantity to price
 	clr coinStage
-	ld coinCount, Y
+	clr coinStage
 	rjmp coinScreen
 
 endStock:
@@ -388,14 +388,14 @@ jmpdeliveryScreen:
 
 payCheck:
 	clr coinStage
-	dec coinCount
-	mov temp, coinCount
-	cpi temp, 0
-	breq jmpdeliveryScreen
+	inc coinCount
 	ld temp1, Y
-	sub temp
+	mov temp, coinCount
+	cp temp, temp1
+	breq jmpdeliveryScreen
+	sub temp1, temp
 	do_lcd_command 0b11000000
-	do_lcd_rdata temp
+	do_lcd_rdata temp1
 	rjmp coinBack
 
 ;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
