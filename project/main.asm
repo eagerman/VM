@@ -177,18 +177,13 @@ RESET:
 
 	
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
-/*	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
-	sts ADMUX, temp
-	ldi temp, (1<<MUX5)	;
-	sts ADCSRB, temp
-	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
-	sts ADCSRA, temp*/
-	
+
 ; To repeat the routine, set 1<<ADSC
 	ldi temp, (3<<REFS0) | (0<<ADLAR) | (0<<MUX0)
 	sts ADMUX, temp
 	ldi temp, (1<<MUX5)
 	sts ADCSRB, temp
+	;ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
 	ldi temp, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
 	sts ADCSRA, temp
 
@@ -375,6 +370,25 @@ coinLoop:
 
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
 
+;========== Delivery MODE ===============================================================
+deliveryScreen:
+	do_lcd_command 0b00000001 ; Clear display
+	do_lcd_data 'D'
+	do_lcd_data 'e'
+	do_lcd_data 'l'
+	do_lcd_data 'i'
+	do_lcd_data 'v'
+	do_lcd_data 'e'
+	do_lcd_data 'r'
+	do_lcd_data 'i'
+	do_lcd_data 'n'
+	do_lcd_data 'g'
+	do_lcd_data ' '
+	do_lcd_data 'i'
+	do_lcd_data 't'
+	do_lcd_data 'e'
+	do_lcd_data 'm'
+	ret
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 adminMode:
 		do_lcd_command 0b10000000
@@ -598,7 +612,9 @@ potStageMax:
 ; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
 potStageFinal:
 	inc coinCount
-	rcall turnOnLEDS;
+	rcall deliveryScreen;
+	rcall flashLEDS;
+	rcall selectScreen;
 
 ;	dec inventoryCost
 	ldi temp1, 1
