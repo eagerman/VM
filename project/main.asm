@@ -479,6 +479,7 @@ itemChoose:
 	brlo endItem
 	cpi temp, ':'
 	brge endItem
+	subi temp, '1'
 
 	ldi YH, high(item_struct)
 	ldi YL, low(item_struct)
@@ -494,13 +495,12 @@ itemCon:
 	do_lcd_command 0b10001011
 	do_lcd_data_reg key
 	ld temp, Y+
-	subi temp, -'0'
+	ledLightUpBinary temp
 	do_lcd_command 0b11000000
-	do_lcd_data_reg temp
+	do_lcd_rdata temp
 	ld temp, Y
-	subi temp, -'0'
 	do_lcd_command 0b11001111
-	do_lcd_data_reg temp
+	do_lcd_rdata temp
 	rjmp adminLoop
 
 endItem:
