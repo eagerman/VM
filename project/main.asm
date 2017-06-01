@@ -13,15 +13,23 @@
 
 .dseg
 	item_struct:	.byte ITEM_STRUCT_SIZE
-PotCounter:				;100ms
-	.byte 2
+	PotCounter:		.byte 2
 
 .def temp = r16
 .def key = r25 ;holds the latest key pressed
-.def enablePot = r13
+
+;========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== 
+.def coinStage = r13
 .def coinCount = r2
 .def potValueL = r4
 .def potValueH = r5
+
+.equ COIN_START = 0
+.equ COIN_LOW = 1
+.equ COIN_HIGH = 2
+.equ COIN_END = 3
+
+;========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== POTENTIOMETER VARIABLE ========== 
 .def row = r17              ; current row number
 .def col = r19              ; current column number
 .def rmask = r20            ; mask for current row during scan
@@ -139,8 +147,6 @@ Timer1Counter:
    jmp Timer0OVF        ; Jump to the interrupt handler for
 .org 0x003A			;ADC ADDR
 	jmp EXT_POT
-.org OVF3addr
-	jmp TIMER3OVF
 jmp DEFAULT          ; default service for all other interrupts.
 DEFAULT:  reti          ; no service
 
@@ -177,7 +183,7 @@ RESET:
 	ldi temp1, PORTLDIR
     sts DDRL, temp1	; enable input on lower 4 bits of port L
 	
-	clr enablePot
+	clr coinStage
 	clr potValueL
 	clr potValueH
 	clr coinCount
@@ -185,16 +191,11 @@ RESET:
 	;Timers
 	ldi temp, 0b00000000
     out TCCR0A, temp
-	sts TCCR3A, temp
     ldi temp, 0b00000010
-    out TCCR0B, temp 
-	sts TCCR3B, temp         ; Prescaling value = 8
+    out TCCR0B, temp         ; Prescaling value = 8
     ldi temp, 1<<TOIE0      ; = 128 microseconds
-	ldi temp, (1<<TOIE4)
     sts TIMSK0, temp        ; T/C0 interrupt enable
-	sts TIMSK3, temp
 
-	
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
 
 ; To repeat the routine, set 1<<ADSC
@@ -202,8 +203,8 @@ RESET:
 	sts ADMUX, temp
 	ldi temp, (1<<MUX5)
 	sts ADCSRB, temp
-	;ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
-	ldi temp, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
+	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
+	;ldi temp, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
 	sts ADCSRA, temp
 
 	ldi temp, 1
@@ -304,8 +305,8 @@ chooseCon:
 	ld temp, Y
 	cpi temp, 0
 	breq emptyScreen
-	inc enablePot
 	adiw Y, 1 ;from quantity to price
+	clr coinStage
 	ld coinCount, Y
 	rjmp coinScreen
 
@@ -343,7 +344,7 @@ emptyScreen:
 
 ;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
 cancelCoin:
-	clr enablePot
+	clr coinStage
 	jmp selectScreen
 ;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
 
@@ -364,25 +365,92 @@ coinScreen:
 	do_lcd_data 's'
 	do_lcd_command 0b11000000
 	do_lcd_rdata coinCount
+	clr coinStage
 
 coinLoop:
 	rcall checkKey
 	cpi key, '#'
 	breq cancelCoin
-	mov temp, coinCount
-	cpi temp, 0
-	breq deliveryScreen
+	rcall checkPot
+	mov temp, coinStage
+	cpi temp, COIN_END
+	breq payCheck
+coinBack:
 	rcall sleep_5ms
 	rjmp coinLoop
 	;TODO push buttons and led light
 
+jmpdeliveryScreen:
+	jmp deliveryScreen
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
+
+;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
+
+payCheck:
+	clr coinStage
+	dec coinCount
+	mov temp, coinCount
+	cpi temp, 0
+	breq jmpdeliveryScreen
+	ld temp1, Y
+	sub temp
+	do_lcd_command 0b11000000
+	do_lcd_rdata temp
+	rjmp coinBack
+
+;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
+
+;========== CHECK POT MODE ========== CHECK POT MODE ========== CHECK POT MODE ========== CHECK POT MODE ========== 
+checkPot:
+	push temp1
+	push temp2
+	push temp
+	lds potValueL, ADCL
+	lds potValueH, ADCH
+
+checkLow:
+	mov temp, coinStage	
+	cpi temp, COIN_START
+	breq lowCon
+	mov temp, coinStage
+	cpi temp, COIN_HIGH
+	brne checkHigh
+
+lowCon:
+	ldi temp1, low(0x0000)
+	ldi temp2, high(0x0000)
+	cp potValueL, temp1
+	cpc potValueH, temp2
+	breq incCoinStage
+	jmp checkPotExit
+
+checkHigh:
+	mov temp, coinStage
+	cpi temp, COIN_LOW
+	brne checkPotExit
+	ldi temp1, low(0x03FF)
+	ldi temp2, high(0x03FF)
+	cp potValueL, temp1
+	cpc potValueH, temp2
+	breq incCoinStage
+	jmp checkPotExit
+
+incCoinStage:
+	inc coinStage
+	
+checkPotExit:
+	pop temp
+	pop temp2
+	pop temp1
+	ret
+
+;========== CHECK POT MODE ========== CHECK POT MODE ========== CHECK POT MODE ========== CHECK POT MODE ========== 
 
 jmpselectScreen:
 	jmp selectScreen
 ;========== Delivery MODE ===============================================================
 deliveryScreen:
-	clr enablePot
+	clr coinStage
 	do_lcd_command 0b00000001 ; Clear display
 	do_lcd_data 'D'
 	do_lcd_data 'e'
@@ -429,7 +497,7 @@ adminMode:
 	do_lcd_data '1'
 	do_lcd_command 0b11000000
 	do_lcd_rdata temp
-	 
+	
 	ledLightUpBinary temp
 	do_lcd_command 0b11001110
 	do_lcd_data '$'
@@ -442,6 +510,8 @@ adminLoop:
 	breq priceUp
 	cpi key, 'B'
 	breq priceDown
+    cpi key, 'C'
+    breq clearItem
 	cpi key, '#'
 	breq jmpBackScreen
 	cpi key, NO_PRESS
@@ -449,7 +519,20 @@ adminLoop:
 	rjmp adminLoop
 	
 jmpBackScreen:
+	clr temp
+	ledLightUpBinary temp
 	jmp selectScreen
+
+clearItem:
+    ld temp, -Y
+    clr temp
+    ledLightUpBinary temp
+    st y, temp
+    adiw y, 1
+    ld temp, y
+    do_lcd_command 0b11000000
+    do_lcd_data '0'
+    rjmp adminLoop
 
 priceUp:
 	cpi temp, 3
@@ -640,103 +723,6 @@ is3:
 	ret
 
 ;========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ==========
-
-;===========Potentiometer reading timer ==================================================
-; TIMER 3 - POTENTIOMETER UPDATE EVERY 100MS
-; SIMILAR TO TIMER1/2
-; ENABLEPOT = 0 -> DISABLE TIMER3
-; ENABLEPOT = 1 -> STAGE 1: GO TO 0x0000 (POTSTAGEMIN)
-; ENABLEPOT = 2 -> STAGE 2: GO TO 0x03FF (POTSTAGEMAX)
-; ENABLEPOT = 3 -> STAGE 3: GO TO 0x0000 (POTSTAGEMIN)
-; ENABLEPOT = 4 -> STAGE 4: COIN INSERTION COMPLETE, GO BACK TO STAGE 1 (POTSTAGEFINAL)
-TIMER3OVF:
-	; 1
-	push temp1
-	push temp2
-	in temp1, SREG
-	push temp1
-	push YH
-	push YL
-	push r25
-	push r24
-checkPot:
-	clr temp1
-	cp enablePot, temp1
-	breq jmpTIMER3Epilogue
-startTIMER3:
-	; 2
-	lds r24, PotCounter
-	lds r25, PotCounter+1
-	adiw r25:r24, 1
-	; 3
-	cpi r24, low(3)
-	ldi temp1, high(3)
-	cpc r25, temp1
-	brne notTenthSecond
-; WHEN 100MS PASS
-; 1. RETRIVE POTENTIOMETER VALUE
-; 2. CHECK STAGE, AND BRANCH ACCORDINGLY
-tenthSeconds:
-	clear PotCounter
-	lds potValueL, ADCL
-	lds potValueH, ADCH	
-	ldi temp1, 1
-	cp enablePot, temp1
-	breq potStageMin
-	inc temp1
-	cp enablePot, temp1
-	breq potStageMax
-	inc temp1
-	cp enablePot, temp1
-	breq potStageMin
-	inc temp1
-	cp enablePot, temp1
-	breq potStageFinal
-; WHEN POTENTIOMETER = 0X0000 (FULLY ANTICLOCKWISE), INCREMENT
-potStageMin:
-	ldi temp1, low(0x0000)
-	ldi temp2, high(0x0000)
-	cp potValueL, temp1
-	cpc potValueH, temp2
-	breq incPot
-	jmp TIMER3Epilogue
-; WHEN POTENTIOMETER = 0X03FF (FULLY CLOCKWISE), INCREMENT
-potStageMax:
-	ldi temp1, low(0x03FF)
-	ldi temp2, high(0x03FF)
-	cp potValueL, temp1
-	cpc potValueH, temp2
-	breq incPot
-	jmp TIMER3Epilogue
-jmpTIMER3Epilogue:
-	jmp TIMER3Epilogue
-; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
-potStageFinal:
-	dec coinCount
-	do_lcd_command 0b00010000
-	do_lcd_rdata coinCount
-	ldi temp1, 1
-	mov enablePot, temp1
-	jmp TIMER3Epilogue
-; NEXT STAGE
-incPot:
-	inc enablePot
-	jmp TIMER3Epilogue
-notTenthSecond:
-	sts PotCounter, r24
-	sts PotCounter+1, r25
-	rjmp TIMER3Epilogue
-; 4
-TIMER3Epilogue:
-	pop r24
-	pop r25
-	pop YL
-	pop YH
-	pop temp1
-	out SREG, temp1
-	pop temp2
-	pop temp1
-	reti
 ; POTENTIOMETER INTERRUPT ADC
 ; USED IN CONJUNCTION WITH TIMER3
 ; 1. PUSH
@@ -757,6 +743,7 @@ EXT_POT:
 	out SREG, temp1
 	pop temp2
 	pop temp1
+
 	reti
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 checkKey:
@@ -766,7 +753,7 @@ checkKey:
 		push r20;
 		push r21;
 		push r22;
-		push r23; 
+		push r23;
 
 keyStart:
         ldi cmask, INITCOLMASK
@@ -782,14 +769,14 @@ debounce:
 		/* start a counter at 10, if key is pressed, increment, if not pressed, decrement,
 		if counter is 20, key is pressed, else key is not pressed */
 
-		ldi temp, 10
-		testDebounce:						
+		ldi temp, 20
+		testDebounce:
 			rcall sleep_1ms
 			lds temp1, PINL
 			cpi temp1, NO_PRESS				; compare key if it's pressed
 			breq testDebounceNotPressed		; 
 			inc temp
-			cpi temp, 20
+			cpi temp, 40
 			brne testDebounce
 			rjmp pressed
 		testDebounceNotPressed:
