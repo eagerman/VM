@@ -337,9 +337,22 @@ selectLoop:
 	cpi key, NO_PRESS
 	breq selectLoop
 	cpi key, '*'
-	breq jmpAdminMode
+	breq adminCheck
 	rjmp checkStock
 
+adminCheck:
+	clr temp
+	clear Timer1Counter
+
+adminCheckLoop:
+	rcall checkKey
+	cpi key, '*'
+	brne selectLoop
+	clr temp
+	rcall check5
+	cpi temp, 1
+	brne adminCheckLoop
+	
 jmpAdminMode:
 	jmp adminMode
 ;========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== SELECTIONSCREEN ========== 
@@ -785,7 +798,7 @@ check3:
 	push r24
 	push r25
 
-checking:
+checking3:
 	lds r24, Timer1Counter
     lds r25, Timer1Counter+1
 
@@ -799,6 +812,30 @@ checking:
 	ret
 
 is3:
+	clear Timer1Counter
+	ldi temp, 1
+	pop r25
+	pop r24
+	ret
+	
+check5:
+	push r24
+	push r25
+
+checking5:
+	lds r24, Timer1Counter
+    lds r25, Timer1Counter+1
+
+	cpi r24, low(31248)      ; 1953 is what we need Check if (r25:r24) = 7812 ; 7812 = 10^6/128
+    ldi temp, high(31248)    ; 7812 interrupts = 1 second, 3906 interrupts = 0.5 seconds
+    cpc r25, temp
+	brge is5
+	ldi temp, 0
+	pop r25
+	pop r24
+	ret
+
+is5:
 	clear Timer1Counter
 	ldi temp, 1
 	pop r25
