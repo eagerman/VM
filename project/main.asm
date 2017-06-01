@@ -411,9 +411,7 @@ adminCheckLoop:
 	rcall checkKey
 	cpi key, '*'
 	brne selectLoop
-	clr temp
 	rcall check5
-	ldi temp, 1
 	cpi temp, 1
 	brne adminCheckLoop
 	
