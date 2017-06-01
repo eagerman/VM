@@ -13,7 +13,6 @@
 
 .dseg
 	item_struct:	.byte ITEM_STRUCT_SIZE
-	PotCounter:		.byte 2
 
 .def temp = r16
 .def key = r25 ;holds the latest key pressed
@@ -23,6 +22,7 @@
 .def coinCount = r2
 .def potValueL = r4
 .def potValueH = r5
+.def motor = r3
 
 .equ COIN_START = 0
 .equ COIN_LOW = 1
@@ -101,11 +101,11 @@
 .macro ledLightUpBinary
 	mov temp1, @0
 	clr temp2
-	
+	out PORTG, temp2
+
 	cpi temp1, 10
 	brlo check8
 	ldi temp2, 3
-	out DDRG, temp2
 	out PORTG, temp2
 	dec temp1
 	rjmp binaryLoop
@@ -114,7 +114,6 @@
 	cpi temp1, 9
 	brlo binaryLoop
 	ldi temp2, 1
-	out DDRG, temp2
 	out PORTG, temp2
 	dec temp1
 
@@ -127,7 +126,6 @@
 		rjmp binaryLoop
 
 	binaryCont:
-	out DDRC, temp2
 	out PORTC, temp2
 .endmacro
 ;========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== LED MACROS ========== 
@@ -169,6 +167,7 @@ DEFAULT:  reti          ; no service
 
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 RESET:
+	clr motor
 	;stack pointer initialisation
 	ldi temp, low(RAMEND)
 	out SPL, temp
@@ -205,6 +204,15 @@ RESET:
 	clr potValueH
 	clr coinCount
 
+	;motor init
+	ldi temp, 0b00010000; set PE2 to one
+	out DDRE, temp
+
+	;led init
+	ldi temp, 0xff
+	out DDRG, temp
+	out DDRC, temp
+
 	;Timers
 	ldi temp, 0b00000000
     out TCCR0A, temp
@@ -212,6 +220,7 @@ RESET:
     out TCCR0B, temp         ; Prescaling value = 8
     ldi temp, 1<<TOIE0      ; = 128 microseconds
     sts TIMSK0, temp        ; T/C0 interrupt enable
+	
 
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
 
@@ -232,19 +241,57 @@ RESET:
 Timer0OVF: ; interrupt subroutine to Timer0
 	push r24
 	push r25
+	push temp2
+	push temp
 
 counting:
 	lds r24, Timer1Counter
     lds r25, Timer1Counter+1
 	adiw r25:r24, 1 ; Increase the temporary counter by one.
+	mov temp2, motor
+	cpi temp2, 1
+	breq motorCode
+motorCodeBack:
 	sts Timer1Counter, r24
     sts Timer1Counter+1, r25
 
 endTimer:
+	pop temp2
+	pop temp
 	pop r25
 	pop r24
 	reti
 
+motorCode:
+	mov temp1, coinCount
+	cpi temp1, 0
+	breq motorEnd
+	cpi r24, low(1953)      ; 1953 is what we need Check if (r25:r24) = 7812 ; 7812 = 10^6/128
+    ldi temp, high(1953)    ; 7812 interrupts = 1 second, 3906 interrupts = 0.5 seconds
+    cpc r25, temp
+	brge turnOff
+	ser temp
+	out PORTE, temp 
+	rjmp motorCodeBack
+
+turnOff:
+	clr temp2
+	ledLightUpBinary temp2
+	clr temp ; turn motor off
+	out PORTE, temp
+	cpi r24, low(3906)      ; 1953 is what we need Check if (r25:r24) = 7812 ; 7812 = 10^6/128
+    ldi temp, high(3906)    ; 7812 interrupts = 1 second, 3906 interrupts = 0.5 seconds
+    cpc r25, temp
+	brlo motorCodeBack
+	clear Timer1Counter
+	clr r24
+	clr r25
+	dec coinCount
+	rjmp motorCodeBack
+
+motorEnd:
+	clr motor
+	rjmp motorCodeBack
 ;========== INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ==========  INTERUPTS ========== 
 
 ;========== START ========== START ========== START ========== START ========== START ==========
@@ -359,12 +406,6 @@ emptyScreen:
 
 ;========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== EMPTY MODE ========== 
 
-;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
-cancelCoin:
-	clr coinStage
-	jmp selectScreen
-;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
-
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
 coinScreen:
 	do_lcd_command 0b00000001 ; clear display
@@ -402,6 +443,15 @@ jmpdeliveryScreen:
 	jmp deliveryScreen
 ;========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== COIN MODE ========== 
 
+;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
+cancelCoin:
+	clr coinStage
+	inc motor
+	clear Timer1Counter
+	ledLightUpBinary coinStage
+	jmp selectScreen
+;========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== CANCEL COIN MODE ========== 
+
 ;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
 
 payCheck:
@@ -411,10 +461,10 @@ payCheck:
 	mov temp, coinCount
 	cp temp, temp1
 	breq jmpdeliveryScreen
-	ledLightUpBinary temp
-	sub temp, temp1
+	sub temp1, temp
 	do_lcd_command 0b11000000
-	do_lcd_rdata temp
+	do_lcd_rdata temp1
+	ledLightUpBinary temp
 	rjmp coinBack
 
 ;========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== PAY MODE ========== 
@@ -681,7 +731,7 @@ fill:
 	st Y+, r16
 	ldi r16, 9; change back to 9 ;==============;==============;==============;==============;==============;==============
 	st Y+, r16
-	ldi r16, 1
+	ldi r16, 5
 	st Y, r16
 
 end_fill:
@@ -910,7 +960,6 @@ convert_end:
 ; ============== LED FUNCTIONS================================================
 turnOnLEDS:
 	ser temp
-	out DDRC, temp
 	out DDRG, temp
 	out PORTC, temp
 	out PORTG, temp
