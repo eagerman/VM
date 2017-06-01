@@ -124,6 +124,8 @@ Timer1Counter:
    jmp DEFAULT          ; No handling for IRQ1.
 .org OVF0addr
    jmp Timer0OVF        ; Jump to the interrupt handler for
+.org 0x003A			;ADC ADDR
+	jmp EXT_POT
 .org OVF4addr
 	jmp TIMER4OVF
 jmp DEFAULT          ; default service for all other interrupts.
@@ -132,12 +134,21 @@ DEFAULT:  reti          ; no service
 ;========== INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ========== 
 
 ;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
-	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
+/*	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
 	sts ADMUX, temp
 	ldi temp, (1<<MUX5)	;
 	sts ADCSRB, temp
 	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
-	sts ADCSRA, temp
+	sts ADCSRA, temp*/
+	
+; To repeat the routine, set 1<<ADSC
+	ldi temp1, (3<<REFS0) | (0<<ADLAR) | (0<<MUX0)
+	sts ADMUX, temp1
+	ldi temp1, (1<<MUX5)
+	sts ADCSRB, temp1
+	ldi temp1, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
+	sts ADCSRA, temp1
+
 
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 RESET:
@@ -204,10 +215,18 @@ endTimer:
 start:
 	ldi temp, 0b00000000
     out TCCR0A, temp
+	out TCCR4A, temp
     ldi temp, 0b00000010
-    out TCCR0B, temp        ; Prescaling value = 8
+    out TCCR0B, temp 
+	out TCCR4B, temp         ; Prescaling value = 8
     ldi temp, 1<<TOIE0      ; = 128 microseconds
+	ldi temp, (1<<TOIE4)
     sts TIMSK0, temp        ; T/C0 interrupt enable
+	sts TIMSK4, temp
+
+
+
+	
 
 	ldi key, NO_PRESS ;'NUL'
 	rcall fill_struct
@@ -369,7 +388,21 @@ coinLoop:
 
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 adminMode:
-	rjmp selectLoop
+		do_lcd_command 0b10000000
+		do_lcd_data 'A'
+		do_lcd_data 'd'
+		do_lcd_data 'm'
+		do_lcd_data 'i'
+		do_lcd_data 'n'
+		do_lcd_data ' '
+		do_lcd_data 'M'
+		do_lcd_data 'o'
+		do_lcd_data 'd'
+		do_lcd_data 'e'
+		do_lcd_data ' '
+
+		do_lcd_command 0b11000000
+
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 
 end:
@@ -725,7 +758,27 @@ convert_end:
 		pop r17;
 		pop r16;
         ret
-
+; POTENTIOMETER INTERRUPT ADC
+; USED IN CONJUNCTION WITH TIMER4
+; 1. PUSH
+; 2. STORE (1<<ADSC) INTO ADCSRA
+; 3. POP
+EXT_POT:
+	; 1
+	push temp1
+	push temp2
+	in temp1, SREG
+	push temp1
+	; 2
+	lds temp1, ADCSRA
+	ori temp1, (1<<ADSC)
+	sts ADCSRA, temp1
+	; 3
+	pop temp1
+	out SREG, temp1
+	pop temp2
+	pop temp1
+	reti
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 
 ; ============== LED FUNCTIONS================================================
