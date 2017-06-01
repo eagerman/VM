@@ -241,8 +241,8 @@ RESET:
 Timer0OVF: ; interrupt subroutine to Timer0
 	push r24
 	push r25
-	push temp2
 	push temp
+	push temp2
 
 counting:
 	lds r24, Timer1Counter
@@ -731,7 +731,7 @@ fill:
 	st Y+, r16
 	ldi r16, 9; change back to 9 ;==============;==============;==============;==============;==============;==============
 	st Y+, r16
-	ldi r16, 5
+	ldi r16, 1
 	st Y, r16
 
 end_fill:
