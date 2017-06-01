@@ -565,9 +565,6 @@ deliveryScreen:
 
 ;========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ========== ADMIN MODE ==========
 adminMode:
-	ldi YH, high(item_struct)
-	ldi YL, low(item_struct)
-	ld temp, Y+
 	do_lcd_command 0b10000000
 	do_lcd_data 'A'
 	do_lcd_data 'd'
@@ -582,6 +579,9 @@ adminMode:
 	do_lcd_data ' '
 	do_lcd_data '1'
 	do_lcd_command 0b11000000
+	ldi YH, high(item_struct)
+	ldi YL, low(item_struct)
+	ld temp, Y+
 	do_lcd_rdata temp
 	
 	ledLightUpBinary temp
@@ -600,6 +600,8 @@ adminLoop:
     breq clearItem
 	cpi key, '#'
 	breq jmpBackScreen
+	cpi key, '*'
+	breq adminLoop
 	cpi key, NO_PRESS
 	brne jmpItemChoose
 	rjmp adminLoop
