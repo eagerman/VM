@@ -22,6 +22,17 @@ PotCounter:				;100ms
 .def coinCount = r2
 .def potValueL = r4
 .def potValueH = r5
+.def row = r17              ; current row number
+.def col = r19              ; current column number
+.def rmask = r20            ; mask for current row during scan
+.def cmask = r21            ; mask for current column during scan
+.def temp1 = r22 
+.def temp2 = r23
+
+.equ PORTLDIR = 0xF0        ; PH7-4: output, PH3-0, input
+.equ INITCOLMASK = 0xEF     ; scan from the rightmost column,
+.equ INITROWMASK = 0x01     ; scan from the top row
+.equ ROWMASK = 0x0F         ; for obtaining input from Port L
 
 ; The macro clears a word (2 bytes) in a memory
 ; the parameter @0 is the memory address for that word
@@ -77,23 +88,6 @@ PotCounter:				;100ms
 .endmacro
 
 ;========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== LCD MACROS ========== 
-
-;========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ==========
-
-.def row = r17              ; current row number
-.def col = r19              ; current column number
-.def rmask = r20            ; mask for current row during scan
-.def cmask = r21            ; mask for current column during scan
-.def temp1 = r22 
-.def temp2 = r23
-
-.equ PORTLDIR = 0xF0        ; PH7-4: output, PH3-0, input
-.equ INITCOLMASK = 0xEF     ; scan from the rightmost column,
-.equ INITROWMASK = 0x01     ; scan from the top row
-.equ ROWMASK = 0x0F         ; for obtaining input from Port L
-
-;========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ========== KEYPAD MACROS ==========
-
 ;========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ========== SETUP MACROS ==========
 .macro isOdd
 	.if @1 & 1
@@ -126,29 +120,10 @@ Timer1Counter:
    jmp Timer0OVF        ; Jump to the interrupt handler for
 .org 0x003A			;ADC ADDR
 	jmp EXT_POT
-.org OVF4addr
-	jmp TIMER4OVF
+.org OVF3addr
+	jmp TIMER3OVF
 jmp DEFAULT          ; default service for all other interrupts.
 DEFAULT:  reti          ; no service
-
-;========== INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ==========  INTERUPT INITIALISATION ========== 
-
-;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
-/*	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
-	sts ADMUX, temp
-	ldi temp, (1<<MUX5)	;
-	sts ADCSRB, temp
-	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
-	sts ADCSRA, temp*/
-	
-; To repeat the routine, set 1<<ADSC
-	ldi temp1, (3<<REFS0) | (0<<ADLAR) | (0<<MUX0)
-	sts ADMUX, temp1
-	ldi temp1, (1<<MUX5)
-	sts ADCSRB, temp1
-	ldi temp1, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
-	sts ADCSRA, temp1
-
 
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
 RESET:
@@ -188,6 +163,35 @@ RESET:
 	clr potValueH
 	clr coinCount
 
+	;Timers
+	ldi temp, 0b00000000
+    out TCCR0A, temp
+	sts TCCR3A, temp
+    ldi temp, 0b00000010
+    out TCCR0B, temp 
+	sts TCCR3B, temp         ; Prescaling value = 8
+    ldi temp, 1<<TOIE0      ; = 128 microseconds
+	ldi temp, (1<<TOIE4)
+    sts TIMSK0, temp        ; T/C0 interrupt enable
+	sts TIMSK3, temp
+
+	
+;========== POTENTIOMETER INITIALISATION =========== POTENTIOMETER INITIALISATION =========
+/*	ldi temp, (3<<REFS0 | 0<<ADLAR | 0<<MUX0)	;
+	sts ADMUX, temp
+	ldi temp, (1<<MUX5)	;
+	sts ADCSRB, temp
+	ldi temp, (1<<ADEN | 1<<ADSC | 1<<ADIE | 5<<ADPS0)	; Prescaling
+	sts ADCSRA, temp*/
+	
+; To repeat the routine, set 1<<ADSC
+	ldi temp, (3<<REFS0) | (0<<ADLAR) | (0<<MUX0)
+	sts ADMUX, temp
+	ldi temp, (1<<MUX5)
+	sts ADCSRB, temp
+	ldi temp, (1<<ADEN) | (1<<ADSC) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0)
+	sts ADCSRA, temp
+
 	ldi temp, 1
 	rjmp start
 ;========== RESET ========== RESET ==========  RESET ==========  RESET ==========  RESET ========== 
@@ -213,21 +217,6 @@ endTimer:
 
 ;========== START ========== START ========== START ========== START ========== START ==========
 start:
-	ldi temp, 0b00000000
-    out TCCR0A, temp
-	out TCCR4A, temp
-    ldi temp, 0b00000010
-    out TCCR0B, temp 
-	out TCCR4B, temp         ; Prescaling value = 8
-    ldi temp, 1<<TOIE0      ; = 128 microseconds
-	ldi temp, (1<<TOIE4)
-    sts TIMSK0, temp        ; T/C0 interrupt enable
-	sts TIMSK4, temp
-
-
-
-	
-
 	ldi key, NO_PRESS ;'NUL'
 	rcall fill_struct
 	rcall initial_screen
@@ -368,7 +357,7 @@ coinScreen:
 	do_lcd_data_reg temp*/ 
 	do_lcd_rdata temp
 	
-	inc enablePot	; ser enables potentiometer
+	inc enablePot	;enables potentiometer
 	
 	clear Timer1Counter       ; Initialize the temporary counter to 0
 	clr temp
@@ -540,14 +529,14 @@ is3:
 ;========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ========== HELPER FUNCTIONS ==========
 
 ;===========Potentiometer reading timer ==================================================
-; TIMER 4 - POTENTIOMETER UPDATE EVERY 100MS
+; TIMER 3 - POTENTIOMETER UPDATE EVERY 100MS
 ; SIMILAR TO TIMER1/2
-; ENABLEPOT = 0 -> DISABLE TIMER4
+; ENABLEPOT = 0 -> DISABLE TIMER3
 ; ENABLEPOT = 1 -> STAGE 1: GO TO 0x0000 (POTSTAGEMIN)
 ; ENABLEPOT = 2 -> STAGE 2: GO TO 0x03FF (POTSTAGEMAX)
 ; ENABLEPOT = 3 -> STAGE 3: GO TO 0x0000 (POTSTAGEMIN)
 ; ENABLEPOT = 4 -> STAGE 4: COIN INSERTION COMPLETE, GO BACK TO STAGE 1 (POTSTAGEFINAL)
-TIMER4OVF:
+TIMER3OVF:
 	; 1
 	push temp1
 	push temp2
@@ -560,8 +549,8 @@ TIMER4OVF:
 checkPot:
 	clr temp1
 	cp enablePot, temp1
-	breq timer4Epilogue
-startTimer4:
+	breq TIMER3Epilogue
+startTIMER3:
 	; 2
 	lds r24, PotCounter
 	lds r25, PotCounter+1
@@ -597,7 +586,7 @@ potStageMin:
 	cp potValueL, temp1
 	cpc potValueH, temp2
 	breq incPot
-	jmp timer4Epilogue
+	jmp TIMER3Epilogue
 ; WHEN POTENTIOMETER = 0X03FF (FULLY CLOCKWISE), INCREMENT
 potStageMax:
 	ldi temp1, low(0x03FF)
@@ -605,25 +594,26 @@ potStageMax:
 	cp potValueL, temp1
 	cpc potValueH, temp2
 	breq incPot
-	jmp timer4Epilogue
+	jmp TIMER3Epilogue
 ; WHEN PROCESS COMPLETE, INCREMENT COIN COUNT, DECREASE INVENTORY COST
 potStageFinal:
 	inc coinCount
+	rcall turnOnLEDS;
 
 ;	dec inventoryCost
 	ldi temp1, 1
 	mov enablePot, temp1
-	jmp timer4Epilogue
+	jmp TIMER3Epilogue
 ; NEXT STAGE
 incPot:
 	inc enablePot
-	jmp timer4Epilogue
+	jmp TIMER3Epilogue
 notTenthSecond:
 	sts PotCounter, r24
 	sts PotCounter+1, r25
-	rjmp timer4Epilogue
+	rjmp TIMER3Epilogue
 ; 4
-timer4Epilogue:
+TIMER3Epilogue:
 	pop r24
 	pop r25
 	pop YL
@@ -633,7 +623,27 @@ timer4Epilogue:
 	pop temp2
 	pop temp1
 	reti
-
+; POTENTIOMETER INTERRUPT ADC
+; USED IN CONJUNCTION WITH TIMER3
+; 1. PUSH
+; 2. STORE (1<<ADSC) INTO ADCSRA
+; 3. POP
+EXT_POT:
+	; 1
+	push temp1
+	push temp2
+	in temp1, SREG
+	push temp1
+	; 2
+	lds temp1, ADCSRA
+	ori temp1, (1<<ADSC)
+	sts ADCSRA, temp1
+	; 3
+	pop temp1
+	out SREG, temp1
+	pop temp2
+	pop temp1
+	reti
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 checkKey:
 		push r16; debouncer
@@ -758,39 +768,21 @@ convert_end:
 		pop r17;
 		pop r16;
         ret
-; POTENTIOMETER INTERRUPT ADC
-; USED IN CONJUNCTION WITH TIMER4
-; 1. PUSH
-; 2. STORE (1<<ADSC) INTO ADCSRA
-; 3. POP
-EXT_POT:
-	; 1
-	push temp1
-	push temp2
-	in temp1, SREG
-	push temp1
-	; 2
-	lds temp1, ADCSRA
-	ori temp1, (1<<ADSC)
-	sts ADCSRA, temp1
-	; 3
-	pop temp1
-	out SREG, temp1
-	pop temp2
-	pop temp1
-	reti
 ;========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== KEYPAD FUNCTIONS ========== 
 
 ; ============== LED FUNCTIONS================================================
 turnOnLEDS:
 	ser temp
 	out DDRC, temp
+	out DDRG, temp
 	out PORTC, temp
+	out PORTG, temp
 	ret
 
 turnOffLEDS:
 	clr temp
 	out PORTC, temp
+	out PORTG, temp
 	ret
 
 flashLEDS:
